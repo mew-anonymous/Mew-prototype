@@ -19,20 +19,23 @@ Example topology:  ```Host -- (port 0) Edge (port 1) -- (port 1) Core (port 0) -
 # Run the code
 **Step 0:** Please ensure you have install the barefoot SDE. Use at least two switches and connect them.
 
+Set environment variable ```SDE=~/bf-sde-9.1.0/```
+
 **Step 1:** In the edge switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/crossfire_edge.p4```):
 
 Open a new terminal
 ```
-cd $SDE/pkgsrc or cd ~/bf-sde-9.1.0/pkgsrc
+cd $SDE/pkgsrc
 git clone this-project-url
-cd $SDE/pkgsrc/p4-build or cd ~/bf-sde-9.1.0/pkgsrc/p4-build
+cd $SDE/pkgsrc/p4-build
 ./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=/mnt/onl/data/bf-sde-9.1.0/pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
-cd $SDE/ or cd ~/bf-sde-9.1.0/
+cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
 
 Open a new terminal
 ```
+cd $SDE/
 ./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
 ./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/reactor_script/
 ```
@@ -40,16 +43,17 @@ Open a new terminal
 
 Open a new terminal
 ```
-cd $SDE/pkgsrc or cd ~/bf-sde-9.1.0/pkgsrc
+cd $SDE/pkgsrc
 git clone this-project-url
-cd $SDE/pkgsrc/p4-build or cd ~/bf-sde-9.1.0/pkgsrc/p4-build
+cd $SDE/pkgsrc/p4-build
 ./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=/mnt/onl/data/bf-sde-9.1.0/pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
-cd $SDE/ or cd ~/bf-sde-9.1.0/
+cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
 
 Open a new terminal
 ```
+cd $SDE/
 ./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/initial_script/
 ./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/reactor_script/
 ```
