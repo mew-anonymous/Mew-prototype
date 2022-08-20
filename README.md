@@ -31,7 +31,7 @@ git clone https://github.com/mew-anonymous/Mew-prototype
 Open a new terminal
 ```
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=mew_edge_$DEFENSE_TYPE$ P4_PATH=$SDE/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
@@ -39,15 +39,15 @@ cd $SDE/
 Open a new terminal
 ```
 cd $SDE/
-./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
-./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/reactor_script/
+./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
+./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./Mew-prototype/edge/$DEFENSE_TYPE$/reactor_script/
 ```
 **Step 2:** In the core switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/crossfire_core.p4```):
 
 Open a new terminal
 ```
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=mew_core_$DEFENSE_TYPE$ P4_PATH=$SDE/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
@@ -55,6 +55,6 @@ cd $SDE/
 Open a new terminal
 ```
 cd $SDE/
-./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/initial_script/
-./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/reactor_script/
+./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/initial_script/
+./run_p4_test.sh -p $DEFENSE_P4PROGRAM$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/reactor_script/
 ```
