@@ -44,7 +44,6 @@ class PortswitchTest(BfRuntimeTest):
         self.bfrt_info = self.interface.bfrt_info_get(self.p4_name)
         self.target = gc.Target(device_id=0, pipe_id=0xffff)
         # get table name
-        self.flow_ds_depth_table = self.bfrt_info.table_get(self.table_flow_ds_depth)
         self.link_state_update1_table = self.bfrt_info.table_get(self.table_link_state_update1)
         self.link_state_update2_table = self.bfrt_info.table_get(self.table_link_state_update2)
         self.flow_state_update1_table = self.bfrt_info.table_get(self.table_flow_state_update1)
