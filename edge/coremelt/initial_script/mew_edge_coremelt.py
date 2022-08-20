@@ -9,9 +9,6 @@ class PortswitchTest(BfRuntimeTest):
     def setUp(self):
         client_id = 0
         self.p4_name='mew_edge_coremelt'
-        self.table_flow_ds_depth='SwitchIngress.t_flow_ds_depth'
-        self.action_f_d_d_read='SwitchIngress.f_d_d_read'
-        self.action_f_d_d_update='SwitchIngress.f_d_d_update'
 
 
         self.table_link_state_update1='SwitchIngress.link_state_update1'
