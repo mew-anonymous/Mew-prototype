@@ -32,7 +32,7 @@ Open a new terminal
 ```
 cd $SDE/pkgsrc
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=/mnt/onl/data/bf-sde-9.1.0/pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/pkgsrc/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
@@ -49,7 +49,7 @@ Open a new terminal
 ```
 cd $SDE/pkgsrc
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=/mnt/onl/data/bf-sde-9.1.0/pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/pkgsrc/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
