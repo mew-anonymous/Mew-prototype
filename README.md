@@ -31,7 +31,7 @@ git clone https://github.com/mew-anonymous/Mew-prototype
 Open a new terminal
 ```
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/edge/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
@@ -47,7 +47,7 @@ cd $SDE/
 Open a new terminal
 ```
 cd $SDE/pkgsrc/p4-build
-./configure --prefix=$SDE_INSTALL --with-tofino P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4C=p4c --enable-thriftcd  && make && make install
+./configure --prefix=$SDE_INSTALL --with-tofino --with-p4c=p4c --bindir=$SDE_INSTALL/bin P4_NAME=$DEFENSE_P4PROGRAM$ P4_PATH=$SDE/Mew-prototype/core/$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$ P4_VERSION=p4-16 P4_ARCHITECTURE=tna --enable-thriftcd  && make && make install
 cd $SDE/
 ./run_switchd.sh -p $DEFENSE_P4PROGRAM$
 ```
