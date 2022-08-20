@@ -6,8 +6,8 @@
 #include <tna.p4>
 #endif
 
-#include "headers.p4"
-#include "util.p4"
+#include "../../common/headers.p4"
+#include "../../common/util.p4"
 
 /*************************************************************************
 *********************** T Y P E D E F  ***********************************
