@@ -12,7 +12,7 @@ An edge switch is the switch directly connecting to outside networks (hosts).
 
 A core switch is the switch only connecting to other switches and inside hosts.
 
-The following shows the example for the simplest topology (only a edge and a core switch). If you want to use other topology, mofidy the routing file in ```./$DEFENSE_TYPE$/initial_script/*_local.py``` (install the initial routing rules) or add routing rules manually.
+The following shows the example for the simplest topology (only a edge and a core switch). If you want to use other topologies, you should mofidy the routing file in ```./edge/$DEFENSE_TYPE$/initial_script/*_local.py``` and  ```./core/$DEFENSE_TYPE$/initial_script/*_local.py```(install the initial routing rules) or add routing rules manually.
 
 Example topology:  ```Host -- (port 0) Edge (port 1) -- (port 1) Core (port 0) -- Inside Host ```
 
