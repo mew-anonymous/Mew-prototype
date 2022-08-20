@@ -26,7 +26,7 @@ cd $SDE/
 git clone https://github.com/mew-anonymous/Mew-prototype
 ```
 
-**Step 1:** In the edge switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/mew-edge-crossfire.p4```, then $DEFENSE_TYPE$=crossfire, $DEFENSE_P4PROGRAM$=mew-edge-crossfire.p4):
+**Step 1:** In the edge switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/mew-edge-crossfire.p4```, then ```$DEFENSE_TYPE$=crossfire```, ```$DEFENSE_P4PROGRAM$=mew-edge-crossfire.p4```):
 
 Open a new terminal
 ```
@@ -41,7 +41,7 @@ Open a new terminal
 cd $SDE/
 ./run_p4_tests.sh -p mew_edge_$DEFENSE_TYPE$ -t ./Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
 ```
-**Step 2:** In the core switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/mew-core-crossfire.p4```, then $DEFENSE_TYPE$=crossfire, $DEFENSE_P4PROGRAM$=mew-core-crossfire.p4):
+**Step 2:** In the core switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/mew-core-crossfire.p4```, then ```$DEFENSE_TYPE$=crossfire```, ```$DEFENSE_P4PROGRAM$=mew-core-crossfire.p4```):
 
 Open a new terminal
 ```
