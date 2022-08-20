@@ -39,7 +39,7 @@ cd $SDE/
 Open a new terminal
 ```
 cd $SDE/
-./run_p4_test.sh -p mew_edge_$DEFENSE_TYPE$ -t ./Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
+./run_p4_tests.sh -p mew_edge_$DEFENSE_TYPE$ -t ./Mew-prototype/edge/$DEFENSE_TYPE$/initial_script/
 ```
 **Step 2:** In the core switch, build and run the P4 program ```$DEFENSE_TYPE$/$DEFENSE_P4PROGRAM$``` (e.g., ```crossfire/crossfire_core.p4```):
 
@@ -54,6 +54,6 @@ cd $SDE/
 Open a new terminal
 ```
 cd $SDE/
-./run_p4_test.sh -p mew_core_$DEFENSE_TYPE$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/initial_script/
-./run_p4_test.sh -p mew_core_$DEFENSE_TYPE$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/reactor_script/
+./run_p4_tests.sh -p mew_core_$DEFENSE_TYPE$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/initial_script/
+./run_p4_tests.sh -p mew_core_$DEFENSE_TYPE$ -t ./Mew-prototype/core/$DEFENSE_TYPE$/reactor_script/
 ```
