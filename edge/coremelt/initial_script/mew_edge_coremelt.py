@@ -33,8 +33,6 @@ class PortswitchTest(BfRuntimeTest):
         self.action_return_defense_info='SwitchIngress.return_defense_info'
         self.table_blocktable='SwitchIngress.blocktable'
         self.action_return_block_flag='SwitchIngress.return_block_flag'
-        self.table_stale_test='SwitchIngress.stale_test'
-        self.action_return_stale='SwitchIngress.return_stale'
         self.table_thre_check_coremelt='SwitchIngress.thre_check_coremelt'
         self.action_upload_to_cpu_coremelt='SwitchIngress.upload_to_cpu_coremelt'
 
@@ -50,7 +48,6 @@ class PortswitchTest(BfRuntimeTest):
         self.flow_state_update2_table = self.bfrt_info.table_get(self.table_flow_state_update2)
         self.get_defense_info_table = self.bfrt_info.table_get(self.table_get_defense_info)
         self.blocktable_table = self.bfrt_info.table_get(self.table_blocktable)
-        self.stale_test_table = self.bfrt_info.table_get(self.table_stale_test)
         self.thre_check_coremelt_table = self.bfrt_info.table_get(self.table_thre_check_coremelt)
     def my_add_table_entry(self):
         try:
