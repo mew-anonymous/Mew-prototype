@@ -1012,13 +1012,13 @@ control SwitchIngress(
 		extracted_res = pattern_res & dyn_mask;
 	}
 	action extract_coremelt(){
-		extracted_res = pattern_res & 0x00000000; 
+		extracted_res = pattern_res & 0x00004000; //14th bit, 128Kbps
 	}
 	action extract_crossfire(){
-		extracted_res = pattern_res & 0x00000000; 
+		extracted_res = pattern_res & 0x01000000; //20+9th bit, 512
 	}
 	action extract_pulsing(){
-		extracted_res = pattern_res & 0x00000004; //4 times
+		extracted_res = pattern_res & 0x80000000; //29+3th bit, 8 times
 	}
 	table extract_res{
 		key = {
@@ -1170,6 +1170,7 @@ control SwitchIngress(
 		}
 		if(is_blocked == 0 && hdr.ipv4.isValid()){ 
 			@stage(1){
+				get_dyn_info.apply();
 				if(global_time_window==0){
 					cur_link_time_window = link_time_fill_0.execute(cur_port_index);
 				}
@@ -1181,6 +1182,7 @@ control SwitchIngress(
 					congestion_flow_time_update.apply();
 				}
 				record_key[16:0] = flowkey_5tuple[16:0];
+				flow_level=flowkey_5tuple[17:17];
 			}
 			@stage(1){
 				if(hdr.ipv4.version == 10){  //sel packet --> sel; sel_done;
@@ -1234,6 +1236,10 @@ control SwitchIngress(
 			@stage(4){
 				link_state_update2.apply();
 			}
+			@stage(5){
+				if(hdr.ipv4.ihl[3:3] == 1)
+					detection_state_toupdate = cur_offset3_1;  //passing_flow_num++
+			}
 			@stage(6){
 				if(hdr.ipv4.version==4 || hdr.ipv4.version==5 || hdr.ipv4.version==9){
 					if(link_state[31:10] == 0 && is_congestion == 1)  //low load
@@ -1274,6 +1280,11 @@ control SwitchIngress(
 					if(cur_defense_type == 3 && flow_state != 0 && is_congestion == 1){
 						pulsing_flag = congestion_flow_state |-| flow_state; //saturated subtract, should be 0 if high-speed / low-speed < 16
 					}
+					else if(cur_defense_type == 1){
+						if(flow_level == 1){
+							flow_state = congestion_flow_state;
+						}
+					}
 					cur_congestion_flow_time = global_congestion_time_window + cur_congestion_flow_time;
 					cur_flow_time_window = cur_flow_time_window + global_time_window;
 				}
@@ -1287,13 +1298,19 @@ control SwitchIngress(
 						else{
 							cur_pattern_time_window = pattern_time_window_fill_0.execute(flowkey_2tuple);
 						}
-						if(flow_monitor_flag == 1){
-							if(cur_defense_type == 3 && pulsing_flag != 0 && cur_congestion_flow_time == 1) //pulsing
-								pattern_state_toupdate = 1; //offset = 2^y
+						if(flow_monitor_flag == 1 || cur_defense_type == 2){
+							if(cur_defense_type == 1 && flow_state[31:10] == 0 && cur_flow_time_window == 1) //crossfire
+								pattern_state_toupdate = cur_offset1_1; //offset = 2^x
+							else if(cur_defense_type == 3 && pulsing_flag != 0 && cur_congestion_flow_time == 1) //pulsing
+								pattern_state_toupdate = cur_offset2_1; //offset = 2^y
+							else if(cur_defense_type == 2) //coremelt
+								pattern_state_toupdate[31:0] = fstate1_to_update; //offset = 0
 						}
 						else if(hdr.cd.hit==1){ //captured by others
-							if(cur_defense_type == 3 && hdr.cd.state1[0:0] == 1) //pulsing
-								pattern_state_toupdate = 1; //offset = 2^y
+							if(cur_defense_type == 1 && hdr.cd.state1[0:0] == 1) //crossfire
+								pattern_state_toupdate = cur_offset1_1; //offset = 2^x
+							else if(cur_defense_type == 3 && hdr.cd.state1[0:0] == 1) //pulsing
+								pattern_state_toupdate = cur_offset2_1; //offset = 2^y
 							hdr.cd.hit = 0;
 						}
 						else{ //should be captured by latter switches
@@ -1321,7 +1338,9 @@ control SwitchIngress(
 						//before and behind
 						if(flow_monitor_flag==1){
 							hdr.cd.hit=1;
-							if(cur_defense_type == 3 && pulsing_flag != 0) //pulsing
+							if(cur_defense_type == 1 && flow_state[31:10]==0) //crossfire
+								hdr.cd.state1[0:0] = 1;
+							else if(cur_defense_type == 3 && pulsing_flag != 0) //pulsing
 								hdr.cd.state1[0:0] = 1;
 						}
 						@stage(11){
@@ -1472,6 +1491,7 @@ control SwitchEgress( inout headers hdr,
 	}
 	apply{
 		@stage(4){
+			hdr.ipv4.ihl[3:3] = 0;
 			if(hdr.ipv4.version==10){
 				hdr.ipv4.version = 7;
 				hdr.seldone.setValid();

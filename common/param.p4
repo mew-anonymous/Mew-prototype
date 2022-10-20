@@ -1,0 +1,10 @@
+typedef bit<4>  ip_type_t;
+const ip_type_t IPTYPE_IPV4 = 4;
+const ip_type_t IPTYPE_IPV6 = 6;
+const ip_type_t IPTYPE_MONITOR = 5;
+const ip_type_t IPTYPE_SELDONE = 7;
+const ip_type_t IPTYPE_STATEM = 8;
+const ip_type_t IPTYPE_CD = 9;
+const ip_type_t IPTYPE_SEL = 10;
+const bit<9> SOFT_DROP_PORT = 11;
+const bit<9> SOFT_CPU_PORT = 10;

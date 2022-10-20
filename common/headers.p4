@@ -19,7 +19,7 @@ typedef bit<12> vlan_id_t;
 
 typedef bit<16> ether_type_t;
 //const ether_type_t ETHERTYPE_IPV4 = 16w0x0800;
-const ether_type_t ETHERTYPE_IPV4 = 16w0x8100;
+const ether_type_t ETHERTYPE_IPV4 = 16w0x0800;
 const ether_type_t ETHERTYPE_ARP = 16w0x0806;
 const ether_type_t ETHERTYPE_IPV6 = 16w0x86dd;
 const ether_type_t ETHERTYPE_VLAN = 16w0x8100;

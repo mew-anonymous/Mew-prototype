@@ -8,6 +8,7 @@
 
 #include "../../common/headers.p4"
 #include "../../common/util.p4"
+#include "../../common/param.p4"
 
 /*************************************************************************
 *********************** T Y P E D E F  ***********************************
@@ -23,19 +24,10 @@ typedef bit<4> mirror_type_t;
 typedef bit<8>  pkt_type_t;
 const pkt_type_t PKT_TYPE_NORMAL = 1;
 const pkt_type_t PKT_TYPE_MIRROR = 2;
-const ether_type_t ETHERTYPE_CD = 16w0x1212;
-const ether_type_t ETHERTYPE_SEL = 16w0x1213;
-const ether_type_t ETHERTYPE_SELDONE = 16w0x1214;
 const mirror_type_t MIRROR_TYPE_I2E = 1;
 const mirror_type_t MIRROR_TYPE_E2E = 2;
 const bit<8> my_swid = 1;
 const bit<1> edge_flag = 1;
-const bit<9> input_port = 12;
-const bit<9> inside = 16;
-const bit<9> outside = 8;
-const bit<9> output_port = 0;
-const bit<9> next_hop = 16;
-const bit<12> next_vid = 3000;
 
 /*************************************************************************
 *********************** C O N S T  ***********************************
@@ -55,7 +47,7 @@ Register<bit<1>, bit<32>>(32w1048576,0) link_time_window;
 Register<bit<16>, bit<32>>(32w140000,0) flow_bigtime;
 Register<bit<32>, bit<32>>(32w1) my_load;
 
-Register<bit<8>, bit<32>>(32w65536) flow_ds_depth;   //CMS, the stored number may be big, should we only use it for modification stage. Normally, use table action to store depth
+Register<bit<8>, bit<32>>(32w524288) flow_ds_depth;   //CMS, the stored number may be big, should we only use it for modification stage. Normally, use table action to store depth
 
 //flowsz/flow_rate
 Register<bit<32>, bit<32>>(32w140000) flowrate1_0;
@@ -92,9 +84,9 @@ header monitor_t{ //ip.version = 4+1
 }
 header statem_t{ //ip.version = 4+4
 	bit<8> depth;
+	bit<8> cache_depth;
 	bit<32> flow_rate1;
 	bit<32> flow_rate2;
-	bit<32> flow_rate3;
 }
 header seldone_t{ //ip.version = 4+3
 	bit<8> depth;
@@ -183,61 +175,40 @@ parser SwitchIngressParser(
 		pkt.extract(hdr.ipv4);
 		meta.protocol=hdr.ipv4.protocol;
 		transition select(hdr.ipv4.version){
-			4:    parse_pre_layer4;
-			5:    parse_monitor;
-			10:    parse_sel;
-			7:    parse_seldone;
-			8:    parse_statem;
-			9:    parse_cd;
+			IPTYPE_IPV4:    parse_pre_layer4;
+			IPTYPE_MONITOR:    parse_monitor;
+			IPTYPE_SEL:    parse_sel;
+			IPTYPE_SELDONE:    parse_seldone;
+			IPTYPE_STATEM:    parse_statem;
+			IPTYPE_CD:    parse_cd;
 			default:		reject;
 		}
     }
     state parse_monitor{
         pkt.extract(hdr.monitor);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_sel{
 		pkt.extract(hdr.sel);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_seldone{
 		pkt.extract(hdr.seldone);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_statem{
 		pkt.extract(hdr.statem);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_cd{
         pkt.extract(hdr.monitor);
 		pkt.extract(hdr.cd);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
 	state parse_pre_layer4{
-        pkt.extract(hdr.layer4);
         transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
+			IP_PROTOCOLS_TCP: parse_layer4;
+			IP_PROTOCOLS_UDP: parse_layer4;
 			default: accept;
 		}
     }
@@ -335,6 +306,8 @@ control SwitchIngress(
 	bit<7> cur_req_id = 0;
 	bit<16> flow_num=0;
 	bit<1> flow_level = 0;
+	bit<1> existing_flag = 0;
+	bit<1> is_congestion = 0;
 	//request_version_flow
 	RegisterAction<bit<1>, bit<32>, bit<1>>(request_version) req_ver_1 = {
         void apply(inout bit<1> value, out bit<1> read_value){
@@ -414,12 +387,6 @@ control SwitchIngress(
         void apply(inout bit<1> value, out bit<1> read_value){
 			read_value = value;
 			value = 0; 
-        }
-    };
-	RegisterAction<bit<16>, bit<32>, bit<16>>(flow_bigtime) flow_bigtime_update = {
-        void apply(inout bit<16> value, out bit<16> read_value){
-			read_value = value;
-			value = cur_big_time; 
         }
     };
 	
@@ -636,10 +603,11 @@ control SwitchIngress(
 			flowrate1_0_plus.execute(record_key);
 		}
 		action fstate1_0_clear(){	
-			flowrate1_0_clear.execute(record_key);
+			hdr.statem.flow_rate1 = flowrate1_0_clear.execute(record_key);
 		}
 		table flow_state_update1_0{
 			key = {
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 				flow_level: exact;
@@ -651,7 +619,7 @@ control SwitchIngress(
 				fstate1_0_plus;
 				fstate1_0_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		action fstate1_1_update(){ // v: 1, g,c:1/0; v: 0, g: 0, c: 1
 			flowrate1_1_update.execute(record_key);
@@ -664,10 +632,11 @@ control SwitchIngress(
 			flowrate1_1_plus.execute(record_key);
 		}
 		action fstate1_1_clear(){	
-			flowrate1_1_clear.execute(record_key);
+			hdr.statem.flow_rate1 = flowrate1_1_clear.execute(record_key);
 		}
 		table flow_state_update1_1{
 			key = {
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 				flow_level: exact;
@@ -679,7 +648,7 @@ control SwitchIngress(
 				fstate1_1_plus;
 				fstate1_1_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		//flow_state_window2
@@ -693,10 +662,11 @@ control SwitchIngress(
 			flowrate2_0_plus.execute(record_key);
 		}
 		action fstate2_0_clear(){
-			flowrate2_0_clear.execute(record_key);
+			hdr.statem.flow_rate2 = flowrate2_0_clear.execute(record_key);
 		}
 		table flow_state_update2_0{
 			key = {
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 				flow_level: exact;
@@ -708,7 +678,7 @@ control SwitchIngress(
 				fstate2_0_plus;
 				fstate2_0_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		action fstate2_1_update(){	// v: 1, g,c:1/0; v: 0, g: 1, c: 0
 			flowrate2_1_update.execute(record_key);
@@ -720,10 +690,11 @@ control SwitchIngress(
 			flowrate2_1_plus.execute(record_key);
 		}
 		action fstate2_1_clear(){
-			flowrate2_1_clear.execute(record_key);
+			hdr.statem.flow_rate2 = flowrate2_1_clear.execute(record_key);
 		}
 		table flow_state_update2_1{
 			key = {
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 				flow_level: exact;
@@ -735,7 +706,7 @@ control SwitchIngress(
 				fstate2_1_plus;
 				fstate2_1_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		
@@ -805,11 +776,12 @@ control SwitchIngress(
 	
 	
 	
-	action return_defense_info(bit<1> curv, bit<8> curt, bit<7> cur_id){
+	action return_defense_info(bit<1> curv, bit<8> curt, bit<7> curid, bit<1> is_cong){
 		being_congested = 1;
 		cur_req_ver = curv;
 		cur_defense_type = curt;   //coremelt
-		cur_req_id = cur_id;   //coremelt
+		cur_req_id = curid;   //coremelt
+		is_congestion = is_cong;
 	}
 	table get_defense_info{
 		key = {
@@ -834,6 +806,7 @@ control SwitchIngress(
     Hash<bit<20>>(HashAlgorithm_t.CUSTOM, poly1) hash1;
 	action return_block_flag(){
 		is_blocked = 1;
+		ig_dprsr_md.drop_ctl = 1; // Drop packet.
 	}
 	table blocktable{
 		key = {
@@ -841,17 +814,6 @@ control SwitchIngress(
 		}
 		actions = {
 			return_block_flag;
-		}
-	}
-	action return_stale(){
-		stale_flag = 1;
-	}
-	table stale_test{
-		key = {
-			last_time: exact;
-		}
-		actions = {
-			return_stale;
 		}
 	}
 	action upload_to_cpu_coremelt(bit<9> dst_port){
@@ -883,10 +845,10 @@ control SwitchIngress(
 		}
 	}
 	action check_return1(){
-		has_returned = req_ver_1.execute(flowkey_5tuple);
+		has_returned = req_ver_1.execute(flowkey_5tuple) + cur_req_ver;;
 	}
 	action check_return0(){
-		has_returned = req_ver_0.execute(flowkey_5tuple);
+		has_returned = req_ver_0.execute(flowkey_5tuple) + cur_req_ver;;
 	}
 	table dup_filter{
 		key = {
@@ -899,33 +861,36 @@ control SwitchIngress(
 		}
 		size = 2;
 	}
-	action attach_request_info_crossfire_miss(){
-		hdr.cd.setValid();
-		hdr.ipv4.version = 9;
-		hdr.cd.req_id = cur_req_id;
-		hdr.cd.hit = 0;
-		hdr.cd.defense_version = cur_defense_type;
-		//hdr.cd.state1 = flow_state;
+	action flow_time1(){
+		cur_flow_time_window = flow_time_fill_1.execute(flowkey_5tuple);
 	}
-	action attach_request_info_crossfire_hit(){
-		hdr.cd.setValid();
-		hdr.ipv4.version = 9;
-		hdr.cd.req_id = cur_req_id;
-		hdr.cd.hit = 1;
-		hdr.cd.defense_version = cur_defense_type;
-		hdr.cd.state1 = flow_state >> 10;
-
+	action flow_time0(){
+		cur_flow_time_window = flow_time_fill_0.execute(flowkey_5tuple);
 	}
-	table respond_query{
+	table flow_time_update {
 		key = {
-			cur_defense_type: exact;
-			flow_monitor_flag: exact;
+			global_time_window: exact;
 		}
 		actions = {
-			attach_request_info_crossfire_miss;
-			attach_request_info_crossfire_hit;
+			flow_time1;
+			flow_time0;
 		}
-		size = 1024;
+	}
+	action read_flow_ds(){
+		depth_get = flow_ds_depth_read.execute(flowkey_5tuple);
+	}
+	action update_flow_ds(){
+		flow_ds_depth_update.execute(flowkey_5tuple);
+	}
+	table t_flow_ds_depth{
+		key={
+			flow_ds_depth_flag: exact;
+		}
+		actions = {
+			read_flow_ds;
+			update_flow_ds;
+		}
+		size = 2;
 	}
     apply {
 		ig_tm_md.bypass_egress = 1w1;
@@ -944,119 +909,126 @@ control SwitchIngress(
 			@stage(1){
 				if(global_time_window==0){
 					cur_link_time_window = link_time_fill_0.execute(cur_port_index);
-					@stage(6){
-						if(flow_monitor_flag == 1)
-							cur_flow_time_window = flow_time_fill_0.execute(flowkey_5tuple);
-					}
 				}
 				else{
 					cur_link_time_window = link_time_fill_1.execute(cur_port_index);
-					@stage(6){
-						if(flow_monitor_flag == 1)
-							cur_flow_time_window = flow_time_fill_1.execute(flowkey_5tuple);
-					}
 				}
-				last_ver = existing_state_fill_1.execute(flowkey_5tuple);
-				cur_big_time = ig_prsr_md.global_tstamp[47:32];
+				existing_flag = existing_state_fill_1.execute(flowkey_5tuple);
 				flow_level = flowkey_5tuple[17:17];
 				record_key[16:0] = flowkey_5tuple[16:0]; 
+			}
+			if(hdr.ipv4.isValid()){
 				@stage(2){
-					last_time = flow_bigtime_update.execute(record_key);   //47:32, 16 bit, value = per 4 second, time = cur_big_time
-					link_state_update1.apply();
-				}
-			}
-			@stage(3){
-				link_state_update2.apply();
-				last_time=cur_big_time-last_time; //should be 0
-			}
-			if(hdr.ipv4.isValid() && last_hop != 1){
-				@stage(3){
-					flow_ds_depth_key[15:0] = flowkey_5tuple[15:0];	
-					if(hdr.ipv4.version == 4) //a original packet 
-					{
-						@stage(4){
-							if(last_ver==1 && last_time[15:3] == 0) //this is not a new flow, go to monitor 
-							{
-								//need to get the depth of this flow
-								hdr.ipv4.version = 5;
-								hdr.monitor.setValid();
-									
-							}
-							else    //this is a new flow, --> sel
-							{
-								hdr.sel.setValid();
-								hdr.sel.edge_id = my_swid;
-								hdr.sel.passing_depth = 1; //the depth of the current switch 
-								hdr.sel.depth = 1;   //the depth of current least utilized switch
-								hdr.ipv4.version = 10;
-								my_load_flag = 0;   
-							}
-						}
-					}
-					else if(hdr.ipv4.version == 7){  //seldone packet --> statem; drop; 
-						depth_to_update = hdr.seldone.depth;
-						flow_ds_depth_flag = 1;    
+					if(hdr.ipv4.version == 7){  //seldone packet --> statem; drop; 
 						if(hdr.seldone.depth == 1) //this is the target, drop the packet and record the flow
 						{
 							my_load_flag = 1; 
 							ig_dprsr_md.drop_ctl = 1; 
 						}
-						hdr.statem.setValid();
-						hdr.ipv4.version = 8;
-						hdr.statem.depth = hdr.seldone.depth - 1;
-						hdr.seldone.setInvalid();
-						ig_tm_md.ucast_egress_port = 1;
+						else{
+							flow_monitor_flag = 1;
+							depth_to_update = hdr.seldone.depth;
+							flow_ds_depth_flag = 1;  
+							cur_defense_type = cur_defense_type | 0x80;
+							hdr.statem.setValid();
+							hdr.ipv4.version = 8;
+							hdr.statem.depth = hdr.seldone.depth - 1;
+							hdr.seldone.setInvalid();
+							ig_tm_md.ucast_egress_port = 1;
+						}
 					}
-					@stage(4){	
-						if(flow_ds_depth_flag==0)
-							depth_get = flow_ds_depth_read.execute(flow_ds_depth_key);
-						else
-							flow_ds_depth_update.execute(flow_ds_depth_key);
-					}
-					
-					@stage(4){
-						if(last_time[15:1] == 0) //it is monitoring recently (e.g., last n seconds)
-							dup_filter.apply(); 
-					}
-					@stage(5){
-						if(my_load_flag==0)
-							hdr.sel.sw_load = my_load_read.execute(0);
-						else
-							my_load_plus.execute(0);
-						if(flow_ds_depth_flag == 0 && hdr.monitor.isValid()){
-							if(depth_get == 1){ //in this switch  
-								flow_monitor_flag = 1;
+					//else if(hdr.ipv4.version == 4 && last_hop != 1 && existing_flag!=1){
+					//	depth_to_update = 1; //cache locally
+					//	flow_ds_depth_flag = 1;
+					//}
+				}
+				@stage(2){	
+					if(hdr.ipv4.version == 4 && last_hop !=1) //a original packet 
+					{
+						if(existing_flag==1)// && last_time[7:3] == 0) //this is not a new flow, go to monitor 
+						{
+							@stage(3){
+								hdr.ipv4.version = 5;
+								hdr.monitor.setValid();	
 							}
-							hdr.monitor.depth[7:0] = depth_get - 1;
+						}
+						else    //this is a new flow, --> sel
+						{
+							@stage(3){
+								flow_monitor_flag = 1;
+								depth_to_update = 1; //cache locally
+								flow_ds_depth_flag = 1;
+								depth_get = 1;
+								hdr.sel.setValid();
+								hdr.sel.edge_id = my_swid;
+								hdr.sel.passing_depth = 1; //the depth of the current switch 
+								hdr.sel.depth = 1;   //the depth of current least utilized switch
+								hdr.ipv4.version = 10;
+							}
 						}
 					}
-					if(flow_monitor_flag==1){
-						@stage(6){
-							flow_state_update1_0.apply();
-						}
-						@stage(7){
-							flow_state_update2_0.apply();
-						}
-						@stage(8){
-							flow_state_update1_1.apply();
-						}
-						@stage(9){
-							flow_state_update2_1.apply();
+				}
+				@stage(4){
+					t_flow_ds_depth.apply();
+						
+				}
+				@stage(5){
+					if(hdr.monitor.isValid()){
+						hdr.monitor.depth[7:0] = depth_get - 1;
+					}
+				}
+				@stage(5){
+					if(depth_get == 1 && cur_defense_type != 2){
+						flow_monitor_flag = 1;
+						flow_time_update.apply();
+					}
+					if(hdr.ipv4.version != 8 && hdr.ipv4.version != 7)
+						dup_filter.apply();
+					@stage(6){
+						if(has_returned == 1 && hdr.ipv4.version != 8){
+							hdr.ipv4.ihl[3:3] = 1;
 						}
 					}
-					@stage(10){
-						if(last_time[15:1] == 0 && has_returned == cur_req_ver)
-							;
-						else if (hdr.monitor.isValid()){
-							//respond_query.apply();
-							hdr.cd.setValid();
-							hdr.ipv4.version = 9;
-							hdr.cd.req_id = cur_req_id;
-							hdr.cd.hit = flow_monitor_flag;
-							hdr.cd.defense_version = cur_defense_type;
-							if(flow_state==0)
-								hdr.cd.state1=1;
-						}
+					if(my_load_flag==0){
+						if(hdr.sel.isValid())
+							hdr.sel.sw_load = my_load_read.execute(0);
+					}
+					else{
+						my_load_plus.execute(0);
+					}
+				}
+				@stage(2){
+					//last_time = flow_bigtime_update.execute(record_key);   //47:32, 16 bit, value = per 4 second, time = cur_big_time
+					link_state_update1.apply();
+				}
+				@stage(3){
+					link_state_update2.apply();
+					//last_time=cur_big_time-last_time; //should be 0
+				}
+				if(flow_monitor_flag==1 && hdr.ipv4.version != 7){
+					@stage(6){
+						flow_state_update1_0.apply();
+					}
+					@stage(7){
+						flow_state_update2_0.apply();
+					}
+					@stage(8){
+						flow_state_update1_1.apply();
+					}
+					@stage(9){
+						flow_state_update2_1.apply();
+						cur_flow_time_window = cur_flow_time_window + global_time_window; //mask
+					}
+				}
+				@stage(10){
+					if( hdr.ipv4.version == 5){
+						hdr.cd.setValid();
+						hdr.ipv4.version = 9;
+						hdr.cd.req_id = cur_req_id;
+						hdr.cd.hit = flow_monitor_flag;
+						hdr.cd.defense_version = cur_defense_type;
+						if(cur_flow_time_window == 1 && cur_defense_type == 1 && flow_state[31:10]==0 && flow_monitor_flag == 1) //crossfire
+							hdr.cd.state1[0:0] = 1;
 					}
 				}
 			}

@@ -8,6 +8,7 @@
 
 #include "../../common/headers.p4"
 #include "../../common/util.p4"
+#include "../../common/param.p4"
 
 /*************************************************************************
 *********************** T Y P E D E F  ***********************************
@@ -23,19 +24,10 @@ typedef bit<4> mirror_type_t;
 typedef bit<8>  pkt_type_t;
 const pkt_type_t PKT_TYPE_NORMAL = 1;
 const pkt_type_t PKT_TYPE_MIRROR = 2;
-const ether_type_t ETHERTYPE_CD = 16w0x1212;
-const ether_type_t ETHERTYPE_SEL = 16w0x1213;
-const ether_type_t ETHERTYPE_SELDONE = 16w0x1214;
 const mirror_type_t MIRROR_TYPE_I2E = 1;
 const mirror_type_t MIRROR_TYPE_E2E = 2;
 const bit<8> my_swid = 1;
 const bit<1> edge_flag = 1;
-const bit<9> input_port = 12;
-const bit<9> inside = 16;
-const bit<9> outside = 8;
-const bit<9> output_port = 0;
-const bit<9> next_hop = 16;
-const bit<12> next_vid = 3000;
 
 /*************************************************************************
 *********************** C O N S T  ***********************************
@@ -55,7 +47,7 @@ Register<bit<1>, bit<32>>(32w1048576,0) link_time_window;
 Register<bit<16>, bit<32>>(32w65536,0) flow_bigtime;
 Register<bit<32>, bit<32>>(32w1) my_load;
 
-Register<bit<8>, bit<32>>(32w65536) flow_ds_depth;   //CMS, the stored number may be big, should we only use it for modification stage. Normally, use table action to store depth
+Register<bit<8>, bit<32>>(32w524288) flow_ds_depth;   //CMS, the stored number may be big, should we only use it for modification stage. Normally, use table action to store depth
 
 //flowsz/flow_rate
 Register<bit<32>, bit<32>>(32w140000) flowrate1;
@@ -87,9 +79,9 @@ header monitor_t{ //ip.version = 4+1
 }
 header statem_t{ //ip.version = 4+4
 	bit<8> depth;
+	bit<8> cache_depth;
 	bit<32> flow_rate1;
 	bit<32> flow_rate2;
-	bit<32> flow_rate3;
 }
 header seldone_t{ //ip.version = 4+3
 	bit<8> depth;
@@ -178,56 +170,43 @@ parser SwitchIngressParser(
 		pkt.extract(hdr.ipv4);
 		meta.protocol=hdr.ipv4.protocol;
 		transition select(hdr.ipv4.version){
-			4:    accept;
-			5:    parse_monitor;
-			10:    parse_sel;
-			7:    parse_seldone;
-			8:    parse_statem;
-			9:    parse_cd;
+			IPTYPE_IPV4:    parse_pre_layer4;
+			IPTYPE_MONITOR:    parse_monitor;
+			IPTYPE_SEL:    parse_sel;
+			IPTYPE_SELDONE:    parse_seldone;
+			IPTYPE_STATEM:    parse_statem;
+			IPTYPE_CD:    parse_cd;
 			default:		reject;
 		}
     }
     state parse_monitor{
         pkt.extract(hdr.monitor);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_sel{
 		pkt.extract(hdr.sel);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_seldone{
 		pkt.extract(hdr.seldone);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_statem{
 		pkt.extract(hdr.statem);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_cd{
+        pkt.extract(hdr.monitor);
 		pkt.extract(hdr.cd);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
+		transition parse_pre_layer4;
+    }
+	state parse_pre_layer4{
+        transition select(meta.protocol){
+			IP_PROTOCOLS_TCP: parse_layer4;
+			IP_PROTOCOLS_UDP: parse_layer4;
 			default: accept;
 		}
     }
-	
     state parse_layer4{
         pkt.extract(hdr.layer4);
         transition accept;
@@ -401,12 +380,6 @@ control SwitchIngress(
 			value = 0; 
         }
     };
-	RegisterAction<bit<16>, bit<32>, bit<16>>(flow_bigtime) flow_bigtime_update = {
-        void apply(inout bit<16> value, out bit<16> read_value){
-			read_value = value;
-			value = cur_big_time; 
-        }
-    };
 	
 	//flowrate 
 	RegisterAction<bit<32>, bit<32>, bit<32>>(flowrate1) flowrate1_update = {
@@ -577,6 +550,21 @@ control SwitchIngress(
 	
 	
 	
+	/*action flow_time1(){
+		cur_flow_time_window = flow_time_fill_1.execute(record_key);
+	}
+	action flow_time0(){
+		cur_flow_time_window = flow_time_fill_0.execute(record_key);
+	}
+	table flow_time_update {
+		key = {
+			global_time_window: exact;
+		}
+		actions = {
+			flow_time1;
+			flow_time0;
+		}
+	}*/
 	/////////////flow_state//////////////////////////
 		//flow_state_window1
 		action fstate1_update(){ // v: 1, g,c:1/0; v: 0, g: 0, c: 1
@@ -590,13 +578,13 @@ control SwitchIngress(
 			flowrate1_plus.execute(record_key);
 		}
 		action fstate1_clear(){	
-			flowrate1_clear.execute(record_key);
+			hdr.statem.flow_rate1 = flowrate1_clear.execute(record_key);
 		}
 		table flow_state_update1{
 			key = {
 				cur_flow_time_window: exact;
 				global_time_window: exact;
-				flow_update_version: exact;
+				cur_defense_type: exact;
 			}
 			
 			actions = {
@@ -605,7 +593,7 @@ control SwitchIngress(
 				fstate1_plus;
 				fstate1_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		//flow_state_window2
@@ -619,13 +607,13 @@ control SwitchIngress(
 			flowrate2_plus.execute(record_key);
 		}
 		action fstate2_clear(){
-			flowrate2_clear.execute(record_key);
+			hdr.statem.flow_rate2 = flowrate2_clear.execute(record_key);
 		}
 		table flow_state_update2{
 			key = {
 				cur_flow_time_window: exact;
 				global_time_window: exact;
-				flow_update_version: exact;
+				cur_defense_type: exact;
 			}
 			
 			actions = {
@@ -634,7 +622,7 @@ control SwitchIngress(
 				fstate2_plus;
 				fstate2_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		
@@ -737,9 +725,10 @@ control SwitchIngress(
                            32w0xFFFFFFFF, // initial shift register value
                            32w0xFFFFFFFF  // result xor
                            ) poly2;
-    Hash<bit<20>>(HashAlgorithm_t.CUSTOM, poly2) hash2;
+    Hash<bit<19>>(HashAlgorithm_t.CUSTOM, poly2) hash2;
 	action return_block_flag(){
 		is_blocked = 1;
+		ig_dprsr_md.drop_ctl = 1; // Drop packet.
 	}
 	table blocktable{
 		key = {
@@ -749,32 +738,22 @@ control SwitchIngress(
 			return_block_flag;
 		}
 	}
-	action return_stale(){
-		stale_flag = 1;
-	}
-	table stale_test{
-		key = {
-			last_time: range;
-		}
-		actions = {
-			return_stale;
-		}
-	}
 	action upload_to_cpu_coremelt(bit<9> dst_port){
 		ig_tm_md.ucast_egress_port = dst_port;
-		hdr.ipv4.version = 11;  //a special packet for banning a flow
+		hdr.ipv4.version = 12;  //a special packet for banning a flow
 	}
 	action drop_coremelt(){
 		ig_dprsr_md.drop_ctl = 1; // Drop packet.
 	}
 	table inform_others{
 		key = {
-			blocklist_update: exact;
+			old_blockstate: exact;
 		}
 		actions = {
 			upload_to_cpu_coremelt;
 			drop_coremelt;
 		}
+		default_action = drop_coremelt();
 	}
 	action update_blocklist(){
 		blocklist_update = 1;
@@ -795,10 +774,11 @@ control SwitchIngress(
 			cur_port_index[8:0] = ig_intr_md.ingress_port;
 			get_defense_info.apply();
 			blocktable.apply();
-			flowkey_2tuple[19:0] = hash2.get({hdr.ipv4.src_addr, hdr.ipv4.dst_addr});
+			flowkey_2tuple[18:0] = hash2.get({hdr.ipv4.src_addr, hdr.ipv4.dst_addr});
 			fstate1_to_update[15:0] = hdr.ipv4.total_len;
 			fstate2_to_update[15:0] = hdr.ipv4.total_len;
 			lstate_to_update[15:0] = hdr.ipv4.total_len;
+			all_route.apply();   //get next hop for different kinds of packets
 		}
 		if(is_blocked == 0){ 
 			@stage(1){
@@ -806,41 +786,50 @@ control SwitchIngress(
 					cur_link_time_window = link_time_fill_0.execute(cur_port_index);
 				else
 					cur_link_time_window = link_time_fill_1.execute(cur_port_index);
-				if(cur_defense_type == 2)
-					last_ver = existing_state_fill_1.execute(flowkey_2tuple);
-				cur_big_time = ig_prsr_md.global_tstamp[47:32];
+				last_ver = existing_state_fill_1.execute(flowkey_2tuple);
+				record_key[16:0] = flowkey_2tuple[16:0]; 
+			}
+			if(hdr.ipv4.isValid()){
 				@stage(2){
-					if(cur_defense_type == 2){ //coremelt defense
-						last_time = flow_bigtime_update.execute(flowkey_2tuple);   //47:32, 16 bit, value = per 4 second, time = cur_big_time
+					if(hdr.ipv4.version == 7){  //seldone packet --> statem; drop; 
+						if(hdr.seldone.depth == 1) //this is the target, drop the packet and record the flow
+						{
+							my_load_flag = 1; 
+							ig_dprsr_md.drop_ctl = 1; 
+						}
+						else{
+							flow_monitor_flag = 1;
+							depth_to_update = hdr.seldone.depth;
+							flow_ds_depth_flag = 1;   
+							cur_defense_type = cur_defense_type | 0x80; 
+							hdr.statem.setValid();
+							hdr.ipv4.version = 8;
+							hdr.statem.depth = hdr.seldone.depth - 1;
+							hdr.seldone.setInvalid();
+							ig_tm_md.ucast_egress_port = 1;
+						}
 					}
-					all_route.apply();   //get next hop for different kinds of packets
-					record_key[16:0] = flowkey_2tuple[16:0]; 
-					link_state_update1.apply();
 				}
-			}
-			@stage(3){
-				link_state_update2.apply();
-				last_time=cur_big_time-last_time; //should be 0
-			}
-			if(hdr.ipv4.isValid() && last_hop != 1 && cur_defense_type == 2){
-				@stage(3){
-					flow_ds_depth_key[15:0] = flowkey_2tuple[15:0];		
+				@stage(2){
 					//flow_time_update.apply();		
 					if(global_time_window==0)
 						cur_flow_time_window = flow_time_fill_0.execute(record_key);
 					else
 						cur_flow_time_window = flow_time_fill_1.execute(record_key);
-					if(hdr.ipv4.version == 4) //a original packet 
+					if(hdr.ipv4.version == 4 && last_hop != 1) //a original packet 
 					{
-						@stage(4){
-							if(last_time[15:3] != 0 || last_ver == 0) //this is a new flow, --> sel
+						@stage(3){
+							if(last_ver == 0) //this is a new flow, --> sel
 							{
+								flow_monitor_flag = 1;
+								depth_to_update = 1; //cache locally
+								flow_ds_depth_flag = 1;
+								depth_get = 1;
 								hdr.sel.setValid();
 								hdr.sel.edge_id = my_swid;
 								hdr.sel.passing_depth = 1; //the depth of the current switch 
 								hdr.sel.depth = 1;   //the depth of current least utilized switch
-								hdr.ipv4.version = 10;
-								my_load_flag = 0;    
+								hdr.ipv4.version = 10;  
 									
 							}
 							else    //this is not a new flow, go to monitor 
@@ -851,56 +840,53 @@ control SwitchIngress(
 							}
 						}
 					}
-					else if(hdr.ipv4.version == 7){  //seldone packet --> statem; drop; 
-						depth_to_update = hdr.seldone.depth;
-						flow_ds_depth_flag = 1;    
-						if(hdr.seldone.depth == 1) //this is the target, drop the packet and record the flow
-						{
-							my_load_flag = 1; 
-							ig_dprsr_md.drop_ctl = 1; 
-						}
-						hdr.statem.setValid();
-						hdr.ipv4.version = 8;
-						hdr.statem.depth = hdr.seldone.depth - 1;
-						hdr.seldone.setInvalid();
-						ig_tm_md.ucast_egress_port = 1;
-					}
-					@stage(4){	
-						if(flow_ds_depth_flag==0)
-							depth_get = flow_ds_depth_read.execute(flow_ds_depth_key);
-						else
-							flow_ds_depth_update.execute(flow_ds_depth_key);
-					}
-					@stage(5){
-						if(my_load_flag==0)
-							hdr.sel.sw_load = my_load_read.execute(0);
-						else
-							my_load_plus.execute(0);
-						if(flow_ds_depth_flag == 0 && hdr.ipv4.version == 5){
-							if(depth_get == 1){ //in this switch  
-								flow_monitor_flag = 1;
-							}
-							hdr.monitor.depth[7:0] = depth_get - 1;
-						}
-					}
-					if(flow_monitor_flag==1){
-						@stage(6){
-							flow_state_update1.apply();
-						}
-						@stage(7){
-							flow_state_update2.apply();
-						}
-					}
-					@stage(8){
-						thre_check_coremelt.apply();  // e.g., if flow_state > 100, 000, 000 bps, tag as suspicious
-					}
-					@stage(9){
-						if(blocklist_update == 1 && old_blockstate == 0)
-							inform_others.apply();
+				}
+				@stage(4){	
+					if(flow_ds_depth_flag==0)
+						depth_get = flow_ds_depth_read.execute(flow_ds_depth_key);
+					else
+						flow_ds_depth_update.execute(flow_ds_depth_key);
+				}
+				@stage(5){
+					if(hdr.monitor.isValid()){
+						hdr.monitor.depth[7:0] = depth_get - 1;
 					}
 				}
+				@stage(5){
+					if(depth_get == 1){
+						flow_monitor_flag = 1;
+						//flow_time_update.apply();
+					}
+					if(my_load_flag==0){
+						if(hdr.sel.isValid())
+							hdr.sel.sw_load = my_load_read.execute(0);
+					}
+					else{
+						my_load_plus.execute(0);
+					}
+				}
+				@stage(2){
+					link_state_update1.apply();
+				}
+				@stage(3){
+					link_state_update2.apply();
+				}
+				if(flow_monitor_flag==1 && hdr.ipv4.version != 7){
+					@stage(6){
+						flow_state_update1.apply();
+					}
+					@stage(7){
+						flow_state_update2.apply();
+					}
+				}
+				@stage(8){
+					thre_check_coremelt.apply();  // e.g., if flow_state > 100, 000, 000 bps, tag as suspicious
+				}
+				@stage(9){
+					if(blocklist_update == 1)
+						inform_others.apply();
+				}
 			}
-			
 		}
 	}
 }

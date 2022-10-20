@@ -8,6 +8,7 @@
 
 #include "../../common/headers.p4"
 #include "../../common/util.p4"
+#include "../../common/param.p4"
 
 /*************************************************************************
 *********************** T Y P E D E F  ***********************************
@@ -23,26 +24,16 @@ typedef bit<4> mirror_type_t;
 typedef bit<8>  pkt_type_t;
 const pkt_type_t PKT_TYPE_NORMAL = 1;
 const pkt_type_t PKT_TYPE_MIRROR = 2;
-const ether_type_t ETHERTYPE_CD = 16w0x1212;
-const ether_type_t ETHERTYPE_SEL = 16w0x1213;
-const ether_type_t ETHERTYPE_SELDONE = 16w0x1214;
 const mirror_type_t MIRROR_TYPE_I2E = 1;
 const mirror_type_t MIRROR_TYPE_E2E = 2;
-const bit<8> my_swid = 1;
-const bit<1> edge_flag = 1;
-const bit<9> input_port = 12;
-const bit<9> inside = 16;
-const bit<9> outside = 8;
-const bit<9> output_port = 0;
-const bit<9> next_hop = 16;
-const bit<12> next_vid = 3000;
+const bit<8> my_swid = 2;
+const bit<1> edge_flag = 0;
 
 /*************************************************************************
 *********************** C O N S T  ***********************************
 *************************************************************************/
 const bit<32> NUM_RAND1 = 51646229;         // A random prime number used in hash to create diff index
 const bit<32> NUM_RAND2 = 122420729;        // A random prime number used in hash to create diff index
-
 
 /*************************************************************************
 *********************** R E G I S T E R  ***********************************
@@ -52,7 +43,6 @@ Register<bit<1>, bit<32>>(32w1048576,0) existing_state;
 Register<bit<1>, bit<32>>(32w1048576,0) request_version;
 Register<bit<1>, bit<32>>(32w1048576,0) flow_time_window;
 Register<bit<1>, bit<32>>(32w1048576,0) link_time_window;
-Register<bit<16>, bit<32>>(32w65536,0) flow_bigtime;
 Register<bit<32>, bit<32>>(32w1) my_load;
 
 Register<bit<8>, bit<32>>(32w65536) flow_ds_depth;   //CMS, the stored number may be big, should we only use it for modification stage. Normally, use table action to store depth
@@ -87,9 +77,9 @@ header monitor_t{ //ip.version = 4+1
 }
 header statem_t{ //ip.version = 4+4
 	bit<8> depth;
+	bit<8> cache_depth;
 	bit<32> flow_rate1;
 	bit<32> flow_rate2;
-	bit<32> flow_rate3;
 }
 header seldone_t{ //ip.version = 4+3
 	bit<8> depth;
@@ -180,52 +170,40 @@ parser SwitchIngressParser(
 		pkt.extract(hdr.ipv4);
 		meta.protocol=hdr.ipv4.protocol;
 		transition select(hdr.ipv4.version){
-			4:    accept;
-			5:    parse_monitor;
-			10:    parse_sel;
-			7:    parse_seldone;
-			8:    parse_statem;
-			9:    parse_cd;
+			IPTYPE_IPV4:    parse_pre_layer4;
+			IPTYPE_MONITOR:    parse_monitor;
+			IPTYPE_SEL:    parse_sel;
+			IPTYPE_SELDONE:    parse_seldone;
+			IPTYPE_STATEM:    parse_statem;
+			IPTYPE_CD:    parse_cd;
 			default:		reject;
 		}
     }
     state parse_monitor{
         pkt.extract(hdr.monitor);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_sel{
 		pkt.extract(hdr.sel);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_seldone{
 		pkt.extract(hdr.seldone);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_statem{
 		pkt.extract(hdr.statem);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
-			default: accept;
-		}
+		transition parse_pre_layer4;
     }
     state parse_cd{
+        pkt.extract(hdr.monitor);
 		pkt.extract(hdr.cd);
-		transition select(meta.protocol){
-			6: parse_layer4;
-			17: parse_layer4;
+		transition parse_pre_layer4;
+    }
+	state parse_pre_layer4{
+        transition select(meta.protocol){
+			IP_PROTOCOLS_TCP: parse_layer4;
+			IP_PROTOCOLS_UDP: parse_layer4;
 			default: accept;
 		}
     }
@@ -310,7 +288,7 @@ control SwitchIngress(
 	bit<8> cur_defense_type = 0;
 	bit<7> cur_req_id = 0;
 	bit<1> being_requested = 0;
-	
+	bit<1> is_congestion = 0;
 	//suspicious_list 
 	RegisterAction<bit<1>, bit<32>, bit<1>>(suspicious_list) suspicious_r = {
         void apply(inout bit<1> value, out bit<1> read_value){
@@ -494,6 +472,7 @@ control SwitchIngress(
 	table all_route {
         key = {
 			ig_intr_md.ingress_port: exact;
+			hdr.ipv4.dst_addr: exact;
         }
 
         actions = {
@@ -527,7 +506,7 @@ control SwitchIngress(
 		}
 		table flow_state_update1_0{
 			key = {
-				flow_monitor_flag: exact;
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 			}
@@ -538,7 +517,7 @@ control SwitchIngress(
 				fstate1_0_plus;
 				fstate1_0_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		//flow_state_window2
@@ -556,7 +535,7 @@ control SwitchIngress(
 		}
 		table flow_state_update2_0{
 			key = {
-				flow_monitor_flag: exact;
+				cur_defense_type: exact;
 				cur_flow_time_window: exact;
 				global_time_window: exact;
 			}
@@ -567,7 +546,7 @@ control SwitchIngress(
 				fstate2_0_plus;
 				fstate2_0_clear;
 			}
-			size = 8;
+			size = 64;
 		}
 		
 		
@@ -637,10 +616,11 @@ control SwitchIngress(
 	
 	
 	
-	action return_defense_info(bit<1> curv, bit<8> curt){
+	action return_defense_info(bit<1> curv, bit<8> curt, bit<1> is_cong){
 		being_congested = 1;
 		cur_req_ver = curv;
 		cur_defense_type = curt;   //coremelt
+		is_congestion = is_cong;
 	}
 	table get_defense_info{
 		key = {
@@ -650,17 +630,6 @@ control SwitchIngress(
 			return_defense_info;
 		}
 		size = 2;
-	}
-	action return_monitor_type(bit<1> flow_flag){
-		flow_monitor_flag = flow_flag;
-	}
-	table get_monitor_type{
-		key = {
-			ig_intr_md.ingress_port: exact;
-		}
-		actions = {
-			return_monitor_type;
-		}
 	}
 	action my_drop(){
 		ig_tm_md.ucast_egress_port = 10;
@@ -713,13 +682,22 @@ control SwitchIngress(
 			global_time_window = ig_prsr_md.global_tstamp[31:31];  //every 2^30 ns ~ 1s
 			cur_port_index[8:0] = ig_intr_md.ingress_port;
 			get_defense_info.apply();
-			get_monitor_type.apply();
+			//get_monitor_type.apply();
 			blocktable.apply();
 			record_key[16:0] = hash1.get({hdr.ipv4.src_addr, hdr.ipv4.dst_addr});
 			fstate1_to_update[15:0] = hdr.ipv4.total_len;
 			fstate2_to_update[15:0] = hdr.ipv4.total_len;
 			lstate_to_update[15:0] = hdr.ipv4.total_len;
 			all_route.apply();   
+			if(hdr.monitor.isValid()){
+				if(hdr.monitor.depth == 1){
+					flow_monitor_flag = 1;
+					hdr.monitor.depth = 0;
+				}
+				else if(hdr.monitor.depth[7:0] != 0){ //it's captured by later switch
+						hdr.monitor.depth = hdr.monitor.depth - 1;
+				}
+			}
 		}
 		if(is_blocked == 0 && hdr.ipv4.isValid()){ 
 			@stage(1){
@@ -731,17 +709,9 @@ control SwitchIngress(
 					cur_link_time_window = link_time_fill_1.execute(cur_port_index);
 					cur_flow_time_window = flow_time_fill_1.execute(record_key);
 				}
-				if(hdr.ipv4.version == 5) //a original packet 
-				{
-					if(hdr.monitor.depth[7:0] == 1){ //it's captured by this switch
-						hdr.monitor.depth = 0;
-						flow_monitor_flag = 1;  //record the flow state 
-					}
-					else if(hdr.monitor.depth[7:0] != 0){ //it's captured by later switch
-						hdr.monitor.depth = hdr.monitor.depth - 1;
-					}
-				}
-				else if(hdr.ipv4.version == 10){  //sel packet --> sel; sel_done;
+			}
+			@stage(1){
+				if(hdr.ipv4.version == 10){  //sel packet --> sel; sel_done;
 					hdr.sel.passing_depth = hdr.sel.passing_depth + 1;
 					temp32 = hdr.sel.sw_load;
 					my_load_flag = 0; //read the load and see if need to update
@@ -752,76 +722,80 @@ control SwitchIngress(
 				}
 				else if(hdr.ipv4.version == 8){  //statem packet --> forward; hit and drop;
 					if(hdr.statem.depth == 1){
+						fstate1_to_update = hdr.statem.flow_rate1;
+						fstate2_to_update = hdr.statem.flow_rate2;
+						flow_monitor_flag = 1; 
+						cur_defense_type = cur_defense_type | 0x80;//migrate_flag = 1;
 						hdr.statem.setInvalid();
-						ig_tm_md.ucast_egress_port = 11; //mean drop
+						ig_tm_md.ucast_egress_port = SOFT_DROP_PORT; //mean drop
 						my_load_flag = 1;
 					}
 					else
 						hdr.statem.depth = hdr.statem.depth - 1;
 				}
-				@stage(2){
-					if(my_load_flag==0)
-						cur_load = my_load_read.execute(0);
-					else
-						my_load_plus.execute(0);
-				}
-				@stage(3){
-					if(hdr.sel.isValid()){
-						hdr.sel.sw_load = cur_load - hdr.sel.sw_load;
-						@stage(4){
-							if(hdr.sel.sw_load[31:31] == 1){ //cur_load < sw_load
-								hdr.sel.sw_load = cur_load;
-								hdr.sel.depth=hdr.sel.passing_depth;
-								meta.depth[0:0] = 1;
-							}
-							else
-								hdr.sel.sw_load = temp32;
+			}
+			@stage(2){
+				if(my_load_flag==0)
+					cur_load = my_load_read.execute(0);
+				else
+					my_load_plus.execute(0);
+			}
+			@stage(3){
+				if(hdr.sel.isValid()){
+					hdr.sel.sw_load = cur_load - hdr.sel.sw_load;
+					@stage(4){
+						if(hdr.sel.sw_load[31:31] == 1){ //cur_load < sw_load
+							hdr.sel.sw_load = cur_load;
+							hdr.sel.depth=hdr.sel.passing_depth;
+							meta.depth[0:0] = 1;
 						}
+						else
+							hdr.sel.sw_load = temp32;
 					}
 				}
-				@stage(2){
-					link_state_update1.apply();
-				}
-				@stage(3){
-					link_state_update2.apply();
-				}
-				@stage(4){
-					if(hdr.ipv4.version==4 || hdr.ipv4.version==5){
-						if(link_state[31:10] == 0 && cur_defense_type == 2)  // link_load < 8Mbps or has been in defense mode
-						{
-							meta.ing_mir_ses = 12;   // 10 --> 10; special mirror port
-							ig_dprsr_md.mirror_type = 1;
-							meta.edge_id=cur_port_index[7:0];
-							@stage(5){meta.depth[2:2] = 1;}
-						}
-						else if (link_state[31:10] != 0 && cur_defense_type == 0){ //it's just congested
-							meta.ing_mir_ses = 12;   // 10 --> 10; special mirror port
-							ig_dprsr_md.mirror_type = 1;
-							meta.edge_id=cur_port_index[7:0];
-							@stage(5){meta.depth[1:1] = 1;}
-						}
+			}
+			@stage(3){
+				link_state_update1.apply();
+			}
+			@stage(4){
+				link_state_update2.apply();
+			}
+			@stage(5){
+				if(hdr.ipv4.version==4 || hdr.ipv4.version==5){
+					if(link_state[31:10] == 0 && is_congestion == 1)  // link_load < 8Mbps or has been in defense mode
+					{
+						meta.ing_mir_ses = 12;   // 10 --> 10; special mirror port
+						ig_dprsr_md.mirror_type = 1;
+						meta.edge_id=cur_port_index[7:0];
+						@stage(5){meta.depth[2:2] = 1;}
+					}
+					else if (link_state[31:12] != 0 && is_congestion == 0){ //it's just congested
+						meta.ing_mir_ses = 12;   // 10 --> 10; special mirror port
+						ig_dprsr_md.mirror_type = 1;
+						meta.edge_id=cur_port_index[7:0];
+						@stage(5){meta.depth[1:1] = 1;}
 					}
 				}
-				@stage(3){
-					flow_state_update1_0.apply();
+			}
+			@stage(2){
+				flow_state_update1_0.apply();
+			}
+			@stage(3){
+				flow_state_update2_0.apply();
+			}
+			@stage(5){
+				if(last_hop == 1){
+					hdr.ipv4.version = 4;
+					hdr.ethernet.ether_type = 0x800;
+					hdr.vlan_tag.setInvalid();
+					hdr.sel.setInvalid();
+					hdr.monitor.setInvalid();
+					hdr.statem.setInvalid();
 				}
-				@stage(4){
-					flow_state_update2_0.apply();
-				}
-				@stage(5){
-					if(last_hop == 1){
-						hdr.ipv4.version = 4;
-						hdr.ethernet.ether_type = 0x800;
-						hdr.vlan_tag.setInvalid();
-						hdr.sel.setInvalid();
-						hdr.monitor.setInvalid();
-						hdr.statem.setInvalid();
-					}
-				}
-				@stage(6){
-					if(cur_defense_type == 2)
-						thre_check_coremelt.apply();  // e.g., if flow_state > 100, 000, 000 bps, tag as suspicious
-				}
+			}
+			@stage(6){
+				if(cur_defense_type == 2)
+					thre_check_coremelt.apply();  // e.g., if flow_state > 100, 000, 000 bps, tag as suspicious
 			}
 		}
 		ig_tm_md.bypass_egress = 1w1;
@@ -863,8 +837,8 @@ parser SwitchEgressParser(
 	state parse_ethernet{
 		pkt.extract(hdr.ethernet);
 		transition select(hdr.ethernet.ether_type){
-			0x800: parse_ipv4;
-			0x8100: parse_vlan;
+			ETHERTYPE_IPV4: parse_ipv4;
+			ETHERTYPE_VLAN: parse_vlan;
 			default: reject;
 		}
 	}
@@ -875,35 +849,14 @@ parser SwitchEgressParser(
     state parse_ipv4{
         pkt.extract(hdr.ipv4);
         transition select(hdr.ipv4.version){
-			4:    accept;
-			5:    parse_monitor;
-			10:    parse_sel;
-			7:    parse_seldone;
-			8:    parse_statem;
-			9:    parse_cd;
-			default:		reject;
+			IPTYPE_SEL:    parse_sel;
+			default:	accept;
 		}
+		
     }
-	state parse_monitor{
-        pkt.extract(hdr.monitor);
-		transition accept;
-    }
-    state parse_sel{
+	state parse_sel{
 		pkt.extract(hdr.sel);
-		transition accept;
-    }
-    state parse_seldone{
-		pkt.extract(hdr.seldone);
-		transition accept;
-    }
-    state parse_statem{
-		pkt.extract(hdr.statem);
-		transition accept;
-    }
-    state parse_cd{
-        pkt.extract(hdr.monitor);
-		pkt.extract(hdr.cd);
-		transition accept;
+        transition accept;
     }
 }
 
@@ -948,7 +901,7 @@ bit<9> link_index=0;
 	}
     table route_mirror{
 		key = {
-			meta.edge_id: exact;
+			hdr.seldone.edge_id: exact;
 		}
 		actions = {
 			mirror_route;
@@ -956,6 +909,7 @@ bit<9> link_index=0;
 		size = 8;
 	}
 	apply{
+		@stage(0){
 		if(hdr.ipv4.version==10){
 			hdr.ipv4.version = 7;
 			hdr.seldone.setValid();
@@ -966,7 +920,10 @@ bit<9> link_index=0;
 				hdr.seldone.depth=hdr.sel.depth;
 			hdr.sel.setInvalid();
 		}
-		route_mirror.apply();
+		@stage(6){
+			route_mirror.apply();
+		}
+		}
 		//depth 1:congested, 2: normal, 3: reverse 4:suspicious
 		if(eg_intr_md.egress_port==10){
 			cur_time = eg_prsr_md.global_tstamp[47:16];

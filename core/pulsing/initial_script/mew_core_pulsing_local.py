@@ -4,21 +4,26 @@ from bfruntime_client_base_tests import BfRuntimeTest
 import bfrt_grpc.client as gc
 import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
 import threading
-mac1=0x0800275a18d5
-mac2=0xa4fa76061562
-mac3=0xa4fa76061563
-mac4=0xa4fa76061564
-mac5=0x080027557aff
-ip1=0xa1a0a0a1
-ip2=0xa2a0a0a2
-ip3=0xa3a0a0a3
-ip4=0xa4a0a0a4
-ip5=0xa5a0a0a5
-ip6=0xa5a0a0a6
-ip7=0xa5a0a0a7
-port0=0
-port1=1
-port2=2
+import os, sys
+sys.path.insert(1, os.getcwd()+'/final_code/common')
+print(os.getcwd())
+import net_config
+port0=net_config.sw2_port0
+port1=net_config.sw2_port1
+port2=net_config.sw2_port2
+port_cpu=net_config.sw2_port_cpu
+mac1 = net_config.mac1
+mac2 = net_config.mac2
+mac3 = net_config.mac3
+mac4 = net_config.mac4
+mac5 = net_config.mac5
+ip1 = net_config.ip1
+ip2 = net_config.ip2
+ip3 = net_config.ip3
+ip4 = net_config.ip4
+ip5 = net_config.ip5
+ip6 = net_config.ip6
+ip7 = net_config.ip7
 class PortswitchTest(BfRuntimeTest):
     def setUp(self):
         client_id = 0
@@ -43,7 +48,7 @@ class PortswitchTest(BfRuntimeTest):
             self.all_route_table.entry_add(
                 self.target,
                 [self.all_route_table.make_key(
-                    [gc.KeyTuple('ig_intr_md.ingress_port', port0)]
+                    [gc.KeyTuple('ig_intr_md.ingress_port', port0), gc.KeyTuple('hdr.ipv4.dst_addr', ip1)]
                 )],
                 [self.all_route_table.make_data(
                     [gc.DataTuple('dst_port',port1), gc.DataTuple('dst_addr',mac1)],
@@ -53,7 +58,7 @@ class PortswitchTest(BfRuntimeTest):
             self.all_route_table.entry_add(
                 self.target,
                 [self.all_route_table.make_key(
-                    [gc.KeyTuple('ig_intr_md.ingress_port', port1)]
+                    [gc.KeyTuple('ig_intr_md.ingress_port', port1), gc.KeyTuple('hdr.ipv4.dst_addr', ip5)]
                 )],
                 [self.all_route_table.make_data(
                     [gc.DataTuple('dst_port',port0)],
@@ -62,20 +67,20 @@ class PortswitchTest(BfRuntimeTest):
             )
             self.mirror_cfg_table.entry_add(self.target, [self.mirror_cfg_table.make_key([gc.KeyTuple('$sid', 11)])], [self.mirror_cfg_table.make_data([
             	gc.DataTuple('$direction', str_val="INGRESS"),
-            	gc.DataTuple('$ucast_egress_port', 2),
+            	gc.DataTuple('$ucast_egress_port', port2),
             	gc.DataTuple('$ucast_egress_port_valid', bool_val=True),
             	gc.DataTuple('$session_enable', bool_val=True),
             ], "$normal")])
             self.mirror_cfg_table.entry_add(self.target, [self.mirror_cfg_table.make_key([gc.KeyTuple('$sid', 12)])], [self.mirror_cfg_table.make_data([
                 gc.DataTuple('$direction', str_val="INGRESS"),
-                gc.DataTuple('$ucast_egress_port', 10),
+                gc.DataTuple('$ucast_egress_port', port_cpu),
                 gc.DataTuple('$ucast_egress_port_valid', bool_val=True),
                 gc.DataTuple('$session_enable', bool_val=True),
             ], "$normal")])
             self.route_mirror_table.entry_add(
                 self.target,
                 [self.route_mirror_table.make_key(
-                    [gc.KeyTuple('meta.edge_id', 1)]
+                    [gc.KeyTuple('hdr.seldone.edge_id', net_config.sw1_id)]
                 )],
                 [self.route_mirror_table.make_data(
                     [gc.DataTuple('dst', mac1)],
